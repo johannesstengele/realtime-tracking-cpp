@@ -1,0 +1,76 @@
+name: Build and evaluate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            triplet: x64-linux
+          - os: windows-2022
+            triplet: x64-windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/out/vcpkg
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/out/vcpkg-cache,readwrite
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: out/vcpkg-cache
+          key: dependencies-${{ matrix.os }}-${{ hashFiles('vcpkg.json') }}
+      - name: Prepare dependency manager
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git -C "$env:VCPKG_ROOT" checkout 817892b0ecbc6af994dd6df999c73faf795adbf2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if ($IsWindows) { & "$env:VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics }
+          else { & "$env:VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics }
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build and test Debug and Release
+        run: |
+          foreach ($preset in @('dev', 'release')) {
+            python tools/build_project.py --preset $preset --vcpkg-root "$env:VCPKG_ROOT" --triplet ${{ matrix.triplet }}
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Run Linux sanitizers
+        if: runner.os == 'Linux'
+        run: |
+          cmake --preset sanitized "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} -DVCPKG_MANIFEST_FEATURES=tests
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build --preset sanitized
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ctest --preset sanitized
+          exit $LASTEXITCODE
+      - name: Evaluate release scenarios
+        run: |
+          $executable = if ($IsWindows) { 'out/managed/release/Release/tracking_experiment.exe' } else { 'out/managed/release/tracking_experiment' }
+          python -m evaluation --executable $executable --output out/experiments/ci --strict
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: results-${{ matrix.os }}
+          path: |
+            out/experiments/ci/
+            out/build/*/Testing/Temporary/LastTest.log
+            out/managed/*/Testing/Temporary/LastTest.log
+          retention-days: 14
+          if-no-files-found: warn

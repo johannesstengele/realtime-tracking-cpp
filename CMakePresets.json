@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Developer Debug",
+      "description": "Debug build with strict project warnings",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": true,
+        "TRACKING_WARNINGS_AS_ERRORS": true,
+        "TRACKING_ENABLE_SANITIZERS": false,
+        "TRACKING_BUILD_BENCHMARKS": false
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "dev",
+      "displayName": "Release",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "sanitized",
+      "inherits": "dev",
+      "displayName": "Runtime diagnostics",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "TRACKING_ENABLE_SANITIZERS": true
+      }
+    },
+    {
+      "name": "benchmark-release",
+      "inherits": "release",
+      "displayName": "Prediction benchmark",
+      "cacheVariables": { "TRACKING_BUILD_BENCHMARKS": true }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev", "configuration": "Debug", "jobs": 4 },
+    { "name": "release", "configurePreset": "release", "configuration": "Release", "jobs": 4 },
+    { "name": "sanitized", "configurePreset": "sanitized", "configuration": "RelWithDebInfo", "jobs": 4 },
+    {
+      "name": "benchmark-release",
+      "configurePreset": "benchmark-release",
+      "configuration": "Release",
+      "targets": ["prediction_benchmark"],
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev", "configurePreset": "dev", "configuration": "Debug",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
+      "name": "release", "configurePreset": "release", "configuration": "Release",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
+      "name": "sanitized", "configurePreset": "sanitized", "configuration": "RelWithDebInfo",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    }
+  ]
+}
